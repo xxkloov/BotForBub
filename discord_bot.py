@@ -87,7 +87,8 @@ app.router.add_routes(routes)
 async def start_web_server():
     runner = web.AppRunner(app)
     await runner.setup()
-    port = int(os.getenv('PORT', 5000))
+    port_str = os.getenv('PORT', '5000')
+    port = int(port_str) if port_str and port_str.strip() else 5000
     host = os.getenv('HOST', '0.0.0.0')
     site = web.TCPSite(runner, host, port)
     await site.start()
