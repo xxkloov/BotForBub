@@ -85,73 +85,104 @@ The bot is now ready to receive reports from your Roblox game. When a player rep
 - The reason for the report
 - Server and place information
 
-## Cloud Hosting (Run Bot 24/7 Without Your PC)
+## Cloud Hosting (100% Free - Run Bot 24/7 Without Your PC)
 
-You don't need to keep your PC running! Here are free/paid hosting options:
+You don't need to keep your PC running! Here are **completely free** hosting options (no trials, no credit cards):
 
-### Option 1: Railway (Recommended - Free Tier Available)
+### Option 1: Render (Recommended - 100% Free Forever)
 
-1. Go to https://railway.app and sign up with GitHub
-2. Click "New Project" > "Deploy from GitHub repo"
-3. Connect your repository or create a new one
-4. Add environment variables in Railway dashboard:
-   - `DISCORD_BOT_TOKEN`
-   - `DISCORD_CHANNEL_ID`
-   - `PORT` (Railway sets this automatically, but you can set it manually)
-5. Railway will automatically deploy and keep your bot running 24/7
-6. Get your public URL from Railway (e.g., `https://your-app.railway.app`)
-7. Update `BOT_SERVER_URL` in Manager.lua to: `https://your-app.railway.app/report`
+**Free tier includes:** Unlimited apps, 750 hours/month (enough for 24/7), auto-deploy from GitHub
 
-### Option 2: Render (Free Tier Available)
-
-1. Go to https://render.com and sign up
+1. Go to https://render.com and sign up (free, no credit card)
 2. Click "New" > "Web Service"
-3. Connect your GitHub repository
+3. Connect your GitHub repository (`xxkloov/BotForBub`)
 4. Settings:
+   - **Name:** `roblox-report-bot` (or any name)
+   - **Region:** Choose closest to you
+   - **Branch:** `main`
+   - **Root Directory:** (leave empty)
    - **Build Command:** `pip install -r requirements.txt`
    - **Start Command:** `python discord_bot.py`
    - **Environment:** Python 3
-5. Add environment variables:
+5. Click "Advanced" and add environment variables:
+   - `DISCORD_BOT_TOKEN` = your bot token
+   - `DISCORD_CHANNEL_ID` = your channel ID
+   - `PORT` = (Render sets this automatically, you can leave it)
+6. Click "Create Web Service"
+7. Wait for deployment (2-3 minutes)
+8. Get your public URL (e.g., `https://roblox-report-bot.onrender.com`)
+9. Update `BOT_SERVER_URL` in Manager.lua to: `https://roblox-report-bot.onrender.com/report`
+
+**Note:** Free tier may spin down after 15 minutes of inactivity, but will wake up when a request comes in (takes ~30 seconds).
+
+### Option 2: Fly.io (100% Free Forever)
+
+**Free tier includes:** 3 shared VMs, 3GB storage, 160GB outbound data/month
+
+1. Go to https://fly.io and sign up (free)
+2. Install Fly CLI: https://fly.io/docs/getting-started/installing-flyctl/
+3. Login: `flyctl auth login`
+4. In your project directory, run: `flyctl launch`
+5. Follow prompts (don't deploy yet)
+6. Set secrets:
+   ```bash
+   flyctl secrets set DISCORD_BOT_TOKEN=your_token
+   flyctl secrets set DISCORD_CHANNEL_ID=your_channel_id
+   ```
+7. Deploy: `flyctl deploy`
+8. Get URL: `flyctl status` (will show app URL)
+9. Update `BOT_SERVER_URL` in Manager.lua
+
+### Option 3: Koyeb (100% Free Forever)
+
+**Free tier includes:** 2 services, 256MB RAM, always-on (no sleep)
+
+1. Go to https://www.koyeb.com and sign up (free)
+2. Click "Create App" > "GitHub"
+3. Connect your repository
+4. Settings:
+   - **Name:** `roblox-report-bot`
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Run Command:** `python discord_bot.py`
+5. Go to "Environment Variables" tab and add:
    - `DISCORD_BOT_TOKEN`
    - `DISCORD_CHANNEL_ID`
-   - `PORT` (Render sets this automatically)
-6. Deploy and get your public URL
-7. Update `BOT_SERVER_URL` in Manager.lua
+6. Click "Deploy"
+7. Get your URL (e.g., `https://roblox-report-bot-xxxxx.koyeb.app`)
+8. Update `BOT_SERVER_URL` in Manager.lua
 
-### Option 3: Heroku (Paid, but has free alternatives)
+### Option 4: Replit (Free, but sleeps after inactivity)
 
-1. Install Heroku CLI: https://devcenter.heroku.com/articles/heroku-cli
-2. Login: `heroku login`
-3. Create app: `heroku create your-bot-name`
-4. Set environment variables:
-   ```bash
-   heroku config:set DISCORD_BOT_TOKEN=your_token
-   heroku config:set DISCORD_CHANNEL_ID=your_channel_id
-   ```
-5. Deploy: `git push heroku main`
-6. Get URL: `heroku info` (will show web URL)
-7. Update `BOT_SERVER_URL` in Manager.lua
+**Free tier:** Always free, but sleeps after 5 minutes of no activity (wakes up on request)
 
-### Option 4: Replit (Free, but may sleep)
+1. Go to https://replit.com and sign up (free)
+2. Click "Create Repl" > "Python"
+3. Name it `roblox-discord-bot`
+4. Upload your files or use Git import:
+   - Click "Version control" > "Import from GitHub"
+   - Enter `xxkloov/BotForBub`
+5. Go to "Secrets" (lock icon) and add:
+   - `DISCORD_BOT_TOKEN`
+   - `DISCORD_CHANNEL_ID`
+6. Click "Run"
+7. Get your Repl URL (e.g., `https://roblox-discord-bot.xxkloov.repl.co`)
+8. Update `BOT_SERVER_URL` in Manager.lua
 
-1. Go to https://replit.com
-2. Create new Python repl
-3. Upload your files
-4. Set environment variables in Secrets tab
-5. Run the bot (use "Always On" for paid plan, or free tier may sleep)
+**Note:** Free Repls sleep after inactivity. Use UptimeRobot (free) to ping your Repl every 5 minutes to keep it awake.
 
-### Option 5: VPS (DigitalOcean, Linode, etc.)
+### Option 5: PythonAnywhere (Free Tier)
 
-For more control, rent a VPS ($5-10/month):
-1. Create Ubuntu server
-2. SSH into it
-3. Install Python and dependencies
-4. Use `screen` or `tmux` to keep bot running:
-   ```bash
-   screen -S discordbot
-   python discord_bot.py
-   # Press Ctrl+A then D to detach
-   ```
+**Free tier:** 1 web app, runs 24/7, but limited CPU time
+
+1. Go to https://www.pythonanywhere.com and sign up (free)
+2. Upload your files via Files tab
+3. Go to Web tab > "Add a new web app"
+4. Choose "Manual configuration" > Python 3.10
+5. Edit WSGI file to run your bot (or use Tasks tab for scheduled tasks)
+6. Set environment variables in Web tab > "Environment variables"
+7. Reload web app
+8. Get your URL (e.g., `https://yourusername.pythonanywhere.com`)
+9. Update `BOT_SERVER_URL` in Manager.lua
 
 ### After Hosting
 
@@ -161,10 +192,23 @@ Once your bot is hosted, update `Manager.lua`:
 local BOT_SERVER_URL = "https://your-hosting-url.com/report"
 ```
 
-Make sure to:
-- Add the domain to Roblox HTTP Service allowed domains
-- Use HTTPS if your hosting provides it (most do)
-- Test the connection from Roblox
+**Important Steps:**
+1. Add the domain to Roblox HTTP Service allowed domains (in Game Settings > Security)
+2. All free hosting services provide HTTPS automatically
+3. Test the connection from Roblox
+4. Check hosting logs if reports aren't coming through
+
+### Keeping Free Services Awake (Optional)
+
+Some free services (like Render free tier) may sleep after inactivity. To keep them awake:
+
+**UptimeRobot (Free):**
+1. Go to https://uptimerobot.com (free forever)
+2. Sign up and create a monitor
+3. Monitor type: "HTTP(s)"
+4. URL: Your bot's health endpoint or main URL
+5. Interval: 5 minutes
+6. This will ping your service every 5 minutes to keep it awake
 
 ## Troubleshooting
 

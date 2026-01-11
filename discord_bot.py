@@ -14,6 +14,10 @@ CHANNEL_ID = None
 app = web.Application()
 routes = web.RouteTableDef()
 
+@routes.get('/')
+async def health_check(request):
+    return web.json_response({"status": "online", "bot": "ready"})
+
 @routes.post('/report')
 async def handle_report(request):
     try:
