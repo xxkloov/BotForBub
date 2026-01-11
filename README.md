@@ -6,17 +6,52 @@ This system allows players to report other players in Roblox, and sends the repo
 
 ### 1. Discord Bot Setup
 
+#### Step 1: Create Discord Application
+
 1. Go to https://discord.com/developers/applications
-2. Click "New Application" and give it a name
-3. Go to the "Bot" section
-4. Click "Add Bot" and confirm
-5. Under "Token", click "Reset Token" and copy the token
-6. Enable "Message Content Intent" under "Privileged Gateway Intents"
-7. Go to "OAuth2" > "URL Generator"
-8. Select scopes: `bot` and `applications.commands`
-9. Select bot permissions: `Send Messages`, `Embed Links`, `Attach Files`
-10. Copy the generated URL and open it in your browser to invite the bot to your server
-11. Get your Discord channel ID (enable Developer Mode in Discord, right-click channel, Copy ID)
+2. Click "New Application" and give it a name (e.g., "Roblox Report Bot")
+3. Click "Create"
+
+#### Step 2: Create Bot and Get Token
+
+1. In the left sidebar, click "Bot"
+2. Click "Add Bot" and confirm
+3. Under "Token" section, click "Reset Token" or "Copy" (if it's already visible)
+4. **COPY THIS TOKEN** - This is your `DISCORD_BOT_TOKEN`
+   - ⚠️ **IMPORTANT:** Never share this token! It's like a password for your bot
+   - Example format: `YOUR_BOT_TOKEN_HERE` (long string of letters and numbers)
+5. Click "Save Changes" (no privileged intents needed - bot only sends messages)
+
+#### Step 3: Invite Bot to Your Server
+
+1. Go to "OAuth2" > "URL Generator" in the left sidebar
+2. Under "Scopes", check:
+   - ✅ `bot`
+   - ✅ `applications.commands`
+3. Under "Bot Permissions", check:
+   - ✅ `Send Messages`
+   - ✅ `Embed Links`
+   - ✅ `Attach Files`
+   - ✅ `Read Message History` (optional but recommended)
+4. Copy the generated URL at the bottom
+5. Open the URL in your browser
+6. Select your Discord server and click "Authorize"
+7. Complete any CAPTCHA if prompted
+
+#### Step 4: Get Channel ID
+
+1. Open Discord app or web
+2. Go to User Settings (gear icon) > Advanced
+3. Enable "Developer Mode" (toggle it ON)
+4. Go to your Discord server
+5. Right-click on the channel where you want reports to be sent
+6. Click "Copy ID" at the bottom
+7. **This is your `DISCORD_CHANNEL_ID`**
+   - Example: `123456789012345678` (just numbers)
+
+**Quick Summary:**
+- **Token** = Bot's password (from Discord Developer Portal > Bot > Token)
+- **Channel ID** = The channel where reports will be posted (right-click channel > Copy ID)
 
 ### 2. Install Python Dependencies
 
