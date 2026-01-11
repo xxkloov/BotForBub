@@ -96,7 +96,6 @@ async def start_web_server():
 @bot.event
 async def on_ready():
     print(f"[discord_bot] Bot logged in as {bot.user}")
-    await start_web_server()
 
 async def main():
     token = os.getenv('DISCORD_BOT_TOKEN')
@@ -110,6 +109,8 @@ async def main():
     if not CHANNEL_ID:
         print("[discord_bot] ERROR: DISCORD_CHANNEL_ID environment variable not set!")
         return
+    
+    await start_web_server()
     
     await bot.start(token)
 
