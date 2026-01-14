@@ -18,13 +18,7 @@ import config
 log = logger.setup_logger("discord_bot")
 
 intents = discord.Intents.default()
-intents.message_content = True
-try:
-    bot = commands.Bot(command_prefix='!', intents=intents)
-except discord.PrivilegedIntentsRequired:
-    log.warning("Message Content Intent not enabled. Using default intents without message_content.")
-    intents.message_content = False
-    bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix='!', intents=intents)
 
 CHANNEL_ID = config.DISCORD_CHANNEL_ID
 app = web.Application()
