@@ -8,4 +8,7 @@ venv/
 env/
 ENV/
 reports.json
+reports.json.backup
+*.db
+logs/
 

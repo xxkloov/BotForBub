@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report System Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f0f0f0;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: normal;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 14px;
+            background: #34495e;
+            color: white;
+        }
+
+        .btn:hover {
+            background: #3d566e;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-left: 4px solid #3498db;
+        }
+
+        .stat-card h3 {
+            font-size: 12px;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .stat-card.primary { border-left-color: #3498db; }
+        .stat-card.success { border-left-color: #2ecc71; }
+        .stat-card.warning { border-left-color: #f39c12; }
+        .stat-card.danger { border-left-color: #e74c3c; }
+
+        .section {
+            background: white;
+            padding: 20px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .section h2 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #ecf0f1;
+            color: #2c3e50;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .table th {
+            background: #ecf0f1;
+            padding: 10px;
+            text-align: left;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .table td {
+            padding: 10px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-primary { background: #3498db; color: white; }
+        .badge-success { background: #2ecc71; color: white; }
+        .badge-warning { background: #f39c12; color: white; }
+        .badge-danger { background: #e74c3c; color: white; }
+
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .game-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .game-stat {
+            text-align: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .game-stat-label {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+        }
+
+        .game-stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .chart-container {
+            height: 200px;
+            margin-top: 15px;
+        }
+
+        .bar-chart {
+            display: flex;
+            align-items: flex-end;
+            height: 150px;
+            gap: 5px;
+        }
+
+        .bar {
+            flex: 1;
+            background: #3498db;
+            border-radius: 3px 3px 0 0;
+            min-height: 5px;
+            position: relative;
+        }
+
+        .bar-label {
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            color: #7f8c8d;
+        }
+
+        .timestamp {
+            color: #7f8c8d;
+            font-size: 12px;
+        }
+
+        @media (max-width: 768px) {
+            .two-column {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Report System Dashboard</h1>
+        <div class="header-actions">
+            <a href="/admin" class="btn">Admin Panel</a>
+            <button onclick="logout()" class="btn">Logout</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="errorMessage" class="error" style="display: none;"></div>
+
+        <div id="dashboardContent">
+            <div class="loading">Loading dashboard data...</div>
+        </div>
+    </div>
+
+    <script>
+        async function checkAuth() {
+            try {
+                const response = await fetch('/admin/check');
+                const data = await response.json();
+                if (!data.authenticated) {
+                    window.location.href = '/admin';
+                    return false;
+                }
+                return true;
+            } catch (error) {
+                window.location.href = '/admin';
+                return false;
+            }
+        }
+
+        function showError(message) {
+            const errorEl = document.getElementById('errorMessage');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+        }
+
+        function formatNumber(num) {
+            return num.toLocaleString();
+        }
+
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp * 1000);
+            return date.toLocaleString();
+        }
+
+        function formatTimeAgo(timestamp) {
+            const seconds = Math.floor((Date.now() - timestamp * 1000) / 1000);
+            if (seconds < 60) return seconds + 's ago';
+            if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+            if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+            return Math.floor(seconds / 86400) + 'd ago';
+        }
+
+        function renderBarChart(data, containerId) {
+            const container = document.getElementById(containerId);
+            if (!container || !data || data.length === 0) {
+                container.innerHTML = '<div class="loading">No data available</div>';
+                return;
+            }
+
+            const maxValue = Math.max(...data.map(d => d.count));
+            const chartHtml = `
+                <div class="bar-chart">
+                    ${data.map(item => {
+                        const height = (item.count / maxValue) * 100;
+                        return `
+                            <div class="bar" style="height: ${height}%">
+                                <div class="bar-label">${item.hour}:00</div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+            container.innerHTML = chartHtml;
+        }
+
+        async function loadDashboard() {
+            if (!await checkAuth()) return;
+
+            try {
+                const response = await fetch('/api/dashboard');
+                const data = await response.json();
+
+                if (data.status !== 'success') {
+                    showError('Failed to load dashboard data');
+                    return;
+                }
+
+                const gameStats = data.game_stats;
+                const reportStats = data.report_stats;
+                const mostReported = data.most_reported || [];
+                const recentReports = data.recent_reports || [];
+                const abuseTypes = data.abuse_types || [];
+                const topReporters = data.top_reporters || [];
+                const reportsByHour = data.reports_by_hour || [];
+
+                let html = `
+                    <div class="stats-grid">
+                        <div class="stat-card primary">
+                            <h3>Total Reports</h3>
+                            <div class="value">${formatNumber(reportStats.total_reports || 0)}</div>
+                        </div>
+                        <div class="stat-card success">
+                            <h3>Today</h3>
+                            <div class="value">${formatNumber(reportStats.today || 0)}</div>
+                        </div>
+                        <div class="stat-card warning">
+                            <h3>This Week</h3>
+                            <div class="value">${formatNumber(reportStats.week || 0)}</div>
+                        </div>
+                        <div class="stat-card danger">
+                            <h3>This Month</h3>
+                            <div class="value">${formatNumber(reportStats.month || 0)}</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Unique Reported</h3>
+                            <div class="value">${formatNumber(reportStats.unique_reported || 0)}</div>
+                        </div>
+                    </div>
+
+                    <div class="two-column">
+                        <div class="section">
+                            <h2>Game Statistics</h2>
+                            ${gameStats ? `
+                                <div>
+                                    <h3 style="margin-bottom: 10px;">${gameStats.name || 'Unknown Game'}</h3>
+                                    <div class="game-info">
+                                        <div class="game-stat">
+                                            <div class="game-stat-label">Playing Now</div>
+                                            <div class="game-stat-value">${formatNumber(gameStats.playing || 0)}</div>
+                                        </div>
+                                        <div class="game-stat">
+                                            <div class="game-stat-label">Total Visits</div>
+                                            <div class="game-stat-value">${formatNumber(gameStats.visits || 0)}</div>
+                                        </div>
+                                        <div class="game-stat">
+                                            <div class="game-stat-label">Favorites</div>
+                                            <div class="game-stat-value">${formatNumber(gameStats.favorites || 0)}</div>
+                                        </div>
+                                        <div class="game-stat">
+                                            <div class="game-stat-label">Likes</div>
+                                            <div class="game-stat-value">${formatNumber(gameStats.likes || 0)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ` : '<p style="color: #7f8c8d;">Game stats not available. Set PLACE_ID in config.</p>'}
+                        </div>
+
+                        <div class="section">
+                            <h2>Reports by Hour (Last 24h)</h2>
+                            <div id="hourlyChart" class="chart-container"></div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h2>Most Reported Players</h2>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>User ID</th>
+                                    <th>Report Count</th>
+                                    <th>Last Report</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${mostReported.length > 0 ? mostReported.map(player => `
+                                    <tr>
+                                        <td><a href="https://www.roblox.com/users/${player.reported_id}/profile" target="_blank">${player.reported_id}</a></td>
+                                        <td><span class="badge badge-danger">${player.report_count}</span></td>
+                                        <td class="timestamp">${formatTimeAgo(player.last_report_time)}</td>
+                                    </tr>
+                                `).join('') : '<tr><td colspan="3" style="text-align: center; color: #7f8c8d;">No reports yet</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="two-column">
+                        <div class="section">
+                            <h2>Abuse Types</h2>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Type</th>
+                                        <th>Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${abuseTypes.map(type => `
+                                        <tr>
+                                            <td>${type.abuse_type}</td>
+                                            <td><span class="badge badge-primary">${type.count}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="section">
+                            <h2>Top Reporters</h2>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>User ID</th>
+                                        <th>Reports Made</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${topReporters.map(reporter => `
+                                        <tr>
+                                            <td><a href="https://www.roblox.com/users/${reporter.reporter_id}/profile" target="_blank">${reporter.reporter_id}</a></td>
+                                            <td><span class="badge badge-warning">${reporter.report_count}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h2>Recent Reports</h2>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Reported User</th>
+                                    <th>Reporter</th>
+                                    <th>Type</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${recentReports.map(report => `
+                                    <tr>
+                                        <td>#${report.id}</td>
+                                        <td><a href="https://www.roblox.com/users/${report.reported_id}/profile" target="_blank">${report.reported_id}</a></td>
+                                        <td><a href="https://www.roblox.com/users/${report.reporter_id}/profile" target="_blank">${report.reporter_id}</a></td>
+                                        <td><span class="badge badge-primary">${report.abuse_type}</span></td>
+                                        <td class="timestamp">${formatTimeAgo(report.timestamp)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+
+                document.getElementById('dashboardContent').innerHTML = html;
+
+                if (reportsByHour.length > 0) {
+                    renderBarChart(reportsByHour, 'hourlyChart');
+                }
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+                showError('Failed to load dashboard data');
+            }
+        }
+
+        async function logout() {
+            try {
+                await fetch('/admin/logout', { method: 'POST' });
+                window.location.href = '/admin';
+            } catch (error) {
+                window.location.href = '/admin';
+            }
+        }
+
+        loadDashboard();
+        setInterval(loadDashboard, 60000);
+    </script>
+</body>
+</html>
+

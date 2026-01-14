@@ -1,92 +1,73 @@
 import discord
 from discord.ext import commands
-import aiohttp
-from aiohttp import web
-import json
+from aiohttp import web, ClientSession
+from aiohttp.web import Response
 import asyncio
-import os
-from datetime import datetime
-from collections import Counter
+from datetime import datetime, timedelta
+from collections import defaultdict
+from typing import Tuple, Dict, Optional
+import time
+import secrets
+import hashlib
+import json
+
+import database
+import logger
+import config
+
+log = logger.setup_logger("discord_bot")
 
 intents = discord.Intents.default()
+intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-CHANNEL_ID = None
+CHANNEL_ID = config.DISCORD_CHANNEL_ID
 app = web.Application()
 routes = web.RouteTableDef()
 
-REPORTS_FILE = "reports.json"
+rate_limit_store = defaultdict(list)
 
-def load_reports():
-    try:
-        if os.path.exists(REPORTS_FILE):
-            with open(REPORTS_FILE, 'r') as f:
-                return json.load(f)
-        return []
-    except Exception as e:
-        print(f"[discord_bot] Error loading reports: {e}")
-        return []
+def check_rate_limit(ip: str) -> bool:
+    now = time.time()
+    window_start = now - config.RATE_LIMIT_WINDOW
+    
+    requests = rate_limit_store[ip]
+    requests[:] = [req_time for req_time in requests if req_time > window_start]
+    
+    if len(requests) >= config.RATE_LIMIT_REQUESTS:
+        return False
+    
+    requests.append(now)
+    return True
 
-def save_reports(reports):
-    try:
-        with open(REPORTS_FILE, 'w') as f:
-            json.dump(reports, f, indent=2)
-    except Exception as e:
-        print(f"[discord_bot] Error saving reports: {e}")
-
-def getReportsLast24H(reportedId):
-    reports = load_reports()
-    now = datetime.now().timestamp()
-    day_ago = now - 86400
-    count = sum(1 for r in reports if r.get('reportedId') == reportedId and r.get('timestamp', 0) >= day_ago)
-    return count
-
-def getReportsLastMonth(reportedId):
-    reports = load_reports()
-    now = datetime.now().timestamp()
-    month_ago = now - (86400 * 30)
-    count = sum(1 for r in reports if r.get('reportedId') == reportedId and r.get('timestamp', 0) >= month_ago)
-    return count
-
-def getReporterHistory(reporterId):
-    reports = load_reports()
-    count = sum(1 for r in reports if r.get('reporterId') == reporterId)
-    return count
-
-def getTimeSinceLastReport(reportedId, exclude_timestamp=None):
-    reports = load_reports()
-    reported_reports = [r for r in reports if r.get('reportedId') == reportedId]
-    if exclude_timestamp:
-        reported_reports = [r for r in reported_reports if r.get('timestamp', 0) != exclude_timestamp]
-    if not reported_reports:
-        return None
-    latest = max(reported_reports, key=lambda x: x.get('timestamp', 0))
-    latest_time = latest.get('timestamp', 0)
-    if latest_time == 0:
-        return None
-    time_diff = datetime.now().timestamp() - latest_time
-    if time_diff < 60:
-        return f"{int(time_diff)} seconds ago"
-    elif time_diff < 3600:
-        return f"{int(time_diff / 60)} minutes ago"
-    elif time_diff < 86400:
-        return f"{int(time_diff / 3600)} hours ago"
-    else:
-        return f"{int(time_diff / 86400)} days ago"
-
-def getMostCommonReason(reportedId, exclude_timestamp=None):
-    reports = load_reports()
-    reported_reports = [r for r in reports if r.get('reportedId') == reportedId]
-    if exclude_timestamp:
-        reported_reports = [r for r in reported_reports if r.get('timestamp', 0) != exclude_timestamp]
-    if not reported_reports:
-        return None
-    reasons = [r.get('abuseType', 'Unknown') for r in reported_reports]
-    if not reasons:
-        return None
-    counter = Counter(reasons)
-    most_common = counter.most_common(1)[0]
-    return f"{most_common[0]} ({most_common[1]} times)"
+def validate_report_data(data: dict) -> Tuple[bool, str]:
+    if not isinstance(data, dict):
+        return False, "Invalid data format"
+    
+    reporter = data.get('reporter', {})
+    reported = data.get('reported', {})
+    
+    if not isinstance(reporter, dict) or not isinstance(reported, dict):
+        return False, "Invalid reporter or reported data"
+    
+    reporter_id = reporter.get('userId', 0)
+    reported_id = reported.get('userId', 0)
+    
+    if not isinstance(reporter_id, int) or reporter_id <= 0:
+        return False, "Invalid reporter user ID"
+    
+    if not isinstance(reported_id, int) or reported_id <= 0:
+        return False, "Invalid reported user ID"
+    
+    abuse_type = data.get('abuseType', '')
+    if not isinstance(abuse_type, str) or len(abuse_type) > 100:
+        return False, "Invalid abuse type"
+    
+    additional_info = data.get('additionalInfo', '')
+    if not isinstance(additional_info, str) or len(additional_info) > 2000:
+        return False, "Invalid additional info"
+    
+    return True, ""
 
 @routes.get('/')
 async def health_check(request):
@@ -94,8 +75,35 @@ async def health_check(request):
 
 @routes.post('/report')
 async def handle_report(request):
+    client_ip = request.remote
+    
+    if not check_rate_limit(client_ip):
+        log.warning(f"Rate limit exceeded for IP: {client_ip}")
+        return web.json_response(
+            {"status": "error", "message": "Rate limit exceeded"},
+            status=429,
+            headers={"Retry-After": str(config.RATE_LIMIT_WINDOW)}
+        )
+    
+    if config.API_KEY and config.API_KEY != "":
+        api_key = request.headers.get('X-API-Key', '')
+        if api_key != config.API_KEY:
+            log.warning(f"Invalid API key from IP: {client_ip}")
+            return web.json_response(
+                {"status": "error", "message": "Unauthorized"},
+                status=401
+            )
+    
     try:
         data = await request.json()
+        
+        is_valid, error_msg = validate_report_data(data)
+        if not is_valid:
+            log.warning(f"Invalid report data from IP {client_ip}: {error_msg}")
+            return web.json_response(
+                {"status": "error", "message": error_msg},
+                status=400
+            )
         
         reporter = data.get('reporter', {})
         reported = data.get('reported', {})
@@ -116,24 +124,18 @@ async def handle_report(request):
         place_id = data.get('placeId', 0)
         timestamp = data.get('timestamp', int(datetime.now().timestamp()))
         
-        reports = load_reports()
-        report_entry = {
-            'reporterId': reporter_id,
-            'reportedId': reported_id,
-            'abuseType': abuse_type,
-            'additionalInfo': additional_info,
-            'timestamp': timestamp,
-            'serverId': server_id,
-            'placeId': place_id
-        }
-        reports.append(report_entry)
-        save_reports(reports)
+        report_id = await database.add_report(
+            reporter_id, reported_id, abuse_type, additional_info,
+            timestamp, str(server_id), place_id
+        )
         
-        reports_24h = getReportsLast24H(reported_id)
-        reports_month = getReportsLastMonth(reported_id)
-        reporter_history = getReporterHistory(reporter_id)
-        time_since_last = getTimeSinceLastReport(reported_id, exclude_timestamp=timestamp)
-        most_common_reason = getMostCommonReason(reported_id, exclude_timestamp=timestamp)
+        log.info(f"Report #{report_id} received: {reported_id} reported by {reporter_id}")
+        
+        reports_24h = await database.get_reports_last_24h(reported_id)
+        reports_month = await database.get_reports_last_month(reported_id)
+        reporter_history = await database.get_reporter_history(reporter_id)
+        time_since_last = await database.get_time_since_last_report(reported_id, exclude_timestamp=timestamp)
+        most_common_reason = await database.get_most_common_reason(reported_id, exclude_timestamp=timestamp)
         
         embed = discord.Embed(
             title="🚨 Player Report",
@@ -187,53 +189,451 @@ async def handle_report(request):
         embed.set_thumbnail(url=reported_thumbnail)
         embed.set_image(url=reporter_thumbnail)
         
-        embed.set_footer(text=f"Reported by {reporter_name} • Report #{len(reports)}")
+        total_reports = await database.get_report_stats()
+        embed.set_footer(text=f"Reported by {reporter_name} • Report #{report_id} • Total: {total_reports['total_reports']}")
         
         channel = bot.get_channel(CHANNEL_ID)
         if channel:
-            await channel.send(embed=embed)
-            print(f"[discord_bot] Report sent to Discord channel")
+            try:
+                await channel.send(embed=embed)
+                log.info(f"Report #{report_id} sent to Discord channel")
+            except discord.errors.HTTPException as e:
+                log.error(f"Failed to send embed to Discord: {e}")
+                return web.json_response(
+                    {"status": "error", "message": "Failed to send to Discord"},
+                    status=500
+                )
         else:
-            print(f"[discord_bot] Channel not found! Make sure CHANNEL_ID is set correctly.")
+            log.error(f"Channel {CHANNEL_ID} not found!")
+            return web.json_response(
+                {"status": "error", "message": "Discord channel not found"},
+                status=500
+            )
         
-        return web.json_response({"status": "success"})
+        return web.json_response({"status": "success", "report_id": report_id})
     
     except Exception as e:
-        print(f"[discord_bot] Error handling report: {e}")
-        return web.json_response({"status": "error", "message": str(e)}, status=500)
+        log.error(f"Error handling report from IP {client_ip}: {e}", exc_info=True)
+        return web.json_response(
+            {"status": "error", "message": "Internal server error"},
+            status=500
+        )
+
+async def is_admin(user_id: int) -> bool:
+    if config.ADMIN_USER_IDS and user_id in config.ADMIN_USER_IDS:
+        return True
+    return await database.is_admin(user_id)
+
+@bot.command(name='reports')
+async def reports_command(ctx, user_id: int = None):
+    if not await is_admin(ctx.author.id):
+        await ctx.send("❌ You don't have permission to use this command.")
+        return
+    
+    if not user_id:
+        await ctx.send("❌ Usage: `!reports <user_id>`")
+        return
+    
+    try:
+        reports = await database.get_reports_by_user(user_id, limit=10)
+        
+        if not reports:
+            await ctx.send(f"📋 No reports found for user ID: `{user_id}`")
+            return
+        
+        embed = discord.Embed(
+            title=f"📋 Reports for User {user_id}",
+            color=discord.Color.blue(),
+            timestamp=discord.utils.utcnow()
+        )
+        
+        report_text = ""
+        for i, report in enumerate(reports[:5], 1):
+            timestamp_str = datetime.fromtimestamp(report['timestamp']).strftime('%Y-%m-%d %H:%M')
+            report_text += f"**{i}.** {report['abuse_type']} - {timestamp_str}\n"
+            if report['additional_info']:
+                info_preview = report['additional_info'][:50]
+                report_text += f"   *{info_preview}...*\n"
+        
+        if len(reports) > 5:
+            report_text += f"\n*... and {len(reports) - 5} more*"
+        
+        embed.add_field(name="Recent Reports", value=report_text or "None", inline=False)
+        embed.set_footer(text=f"Total: {len(reports)} reports")
+        
+        await ctx.send(embed=embed)
+        log.info(f"Admin {ctx.author.id} queried reports for user {user_id}")
+    
+    except ValueError:
+        await ctx.send("❌ Invalid user ID. Please provide a number.")
+    except Exception as e:
+        log.error(f"Error in reports command: {e}", exc_info=True)
+        await ctx.send("❌ An error occurred while fetching reports.")
+
+@bot.command(name='stats')
+async def stats_command(ctx):
+    if not await is_admin(ctx.author.id):
+        await ctx.send("❌ You don't have permission to use this command.")
+        return
+    
+    try:
+        stats = await database.get_report_stats()
+        
+        embed = discord.Embed(
+            title="📊 Report Statistics",
+            color=discord.Color.green(),
+            timestamp=discord.utils.utcnow()
+        )
+        
+        embed.add_field(name="Total Reports", value=f"`{stats['total_reports']}`", inline=True)
+        embed.add_field(name="Today's Reports", value=f"`{stats['today_reports']}`", inline=True)
+        embed.add_field(name="Unique Reported Users", value=f"`{stats['unique_reported']}`", inline=True)
+        embed.add_field(name="Most Common Abuse Type", value=f"`{stats['top_abuse_type']}`", inline=False)
+        
+        await ctx.send(embed=embed)
+        log.info(f"Admin {ctx.author.id} queried statistics")
+    
+    except Exception as e:
+        log.error(f"Error in stats command: {e}", exc_info=True)
+        await ctx.send("❌ An error occurred while fetching statistics.")
+
+@bot.command(name='recent')
+async def recent_command(ctx, count: int = 10):
+    if not await is_admin(ctx.author.id):
+        await ctx.send("❌ You don't have permission to use this command.")
+        return
+    
+    if count < 1 or count > 20:
+        await ctx.send("❌ Count must be between 1 and 20.")
+        return
+    
+    try:
+        reports = await database.get_recent_reports(limit=count)
+        
+        if not reports:
+            await ctx.send("📋 No reports found.")
+            return
+        
+        embed = discord.Embed(
+            title=f"📋 Recent Reports ({len(reports)})",
+            color=discord.Color.orange(),
+            timestamp=discord.utils.utcnow()
+        )
+        
+        report_text = ""
+        for i, report in enumerate(reports, 1):
+            timestamp_str = datetime.fromtimestamp(report['timestamp']).strftime('%m-%d %H:%M')
+            report_text += f"**{i}.** User `{report['reported_id']}` - {report['abuse_type']} - {timestamp_str}\n"
+        
+        embed.add_field(name="Reports", value=report_text[:1024] or "None", inline=False)
+        
+        await ctx.send(embed=embed)
+        log.info(f"Admin {ctx.author.id} queried recent {count} reports")
+    
+    except ValueError:
+        await ctx.send("❌ Invalid count. Please provide a number.")
+    except Exception as e:
+        log.error(f"Error in recent command: {e}", exc_info=True)
+        await ctx.send("❌ An error occurred while fetching recent reports.")
+
+@bot.command(name='search')
+async def search_command(ctx, *, search_term: str = None):
+    if not await is_admin(ctx.author.id):
+        await ctx.send("❌ You don't have permission to use this command.")
+        return
+    
+    if not search_term:
+        await ctx.send("❌ Usage: `!search <term>`")
+        return
+    
+    try:
+        reports = await database.search_reports(search_term, limit=10)
+        
+        if not reports:
+            await ctx.send(f"📋 No reports found matching: `{search_term}`")
+            return
+        
+        embed = discord.Embed(
+            title=f"🔍 Search Results for: {search_term}",
+            color=discord.Color.purple(),
+            timestamp=discord.utils.utcnow()
+        )
+        
+        report_text = ""
+        for i, report in enumerate(reports, 1):
+            timestamp_str = datetime.fromtimestamp(report['timestamp']).strftime('%m-%d %H:%M')
+            report_text += f"**{i}.** User `{report['reported_id']}` - {report['abuse_type']} - {timestamp_str}\n"
+        
+        embed.add_field(name="Results", value=report_text[:1024] or "None", inline=False)
+        embed.set_footer(text=f"Found {len(reports)} results")
+        
+        await ctx.send(embed=embed)
+        log.info(f"Admin {ctx.author.id} searched for: {search_term}")
+    
+    except Exception as e:
+        log.error(f"Error in search command: {e}", exc_info=True)
+        await ctx.send("❌ An error occurred while searching reports.")
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
+
+async def check_auth(request: web.Request) -> bool:
+    session_token = request.cookies.get('admin_session', '')
+    if session_token:
+        return await database.validate_admin_session(session_token)
+    return False
+
+@routes.post('/admin/login')
+async def admin_login(request):
+    try:
+        data = await request.json()
+        password = data.get('password', '')
+        
+        if hash_password(password) == hash_password(config.ADMIN_PASSWORD):
+            session_token = secrets.token_urlsafe(32)
+            expires_at = datetime.now() + timedelta(hours=24)
+            
+            await database.create_admin_session(session_token, expires_at)
+            
+            response = web.json_response({"status": "success", "message": "Login successful"})
+            response.set_cookie('admin_session', session_token, max_age=86400, httponly=True, samesite='Lax')
+            return response
+        else:
+            return web.json_response({"status": "error", "message": "Invalid password"}, status=401)
+    except Exception as e:
+        log.error(f"Error in admin login: {e}", exc_info=True)
+        return web.json_response({"status": "error", "message": "Internal server error"}, status=500)
+
+@routes.post('/admin/logout')
+async def admin_logout(request):
+    response = web.json_response({"status": "success", "message": "Logged out"})
+    response.del_cookie('admin_session')
+    return response
+
+@routes.get('/admin/check')
+async def admin_check(request):
+    is_authenticated = await check_auth(request)
+    return web.json_response({"authenticated": is_authenticated})
+
+@routes.get('/admin/admins')
+async def get_admins(request):
+    if not await check_auth(request):
+        return web.json_response({"status": "error", "message": "Unauthorized"}, status=401)
+    
+    try:
+        admins = await database.get_all_admins()
+        return web.json_response({"status": "success", "admins": admins})
+    except Exception as e:
+        log.error(f"Error getting admins: {e}", exc_info=True)
+        return web.json_response({"status": "error", "message": "Internal server error"}, status=500)
+
+@routes.post('/admin/admins')
+async def add_admin_endpoint(request):
+    if not await check_auth(request):
+        return web.json_response({"status": "error", "message": "Unauthorized"}, status=401)
+    
+    try:
+        data = await request.json()
+        user_id = data.get('user_id')
+        
+        if not user_id or not isinstance(user_id, int):
+            return web.json_response({"status": "error", "message": "Invalid user_id"}, status=400)
+        
+        success = await database.add_admin(user_id)
+        if success:
+            log.info(f"Admin added via web panel: {user_id}")
+            return web.json_response({"status": "success", "message": "Admin added successfully"})
+        else:
+            return web.json_response({"status": "error", "message": "Failed to add admin"}, status=500)
+    except Exception as e:
+        log.error(f"Error adding admin: {e}", exc_info=True)
+        return web.json_response({"status": "error", "message": "Internal server error"}, status=500)
+
+@routes.delete('/admin/admins/{user_id}')
+async def remove_admin_endpoint(request):
+    if not await check_auth(request):
+        return web.json_response({"status": "error", "message": "Unauthorized"}, status=401)
+    
+    try:
+        user_id = int(request.match_info['user_id'])
+        success = await database.remove_admin(user_id)
+        if success:
+            log.info(f"Admin removed via web panel: {user_id}")
+            return web.json_response({"status": "success", "message": "Admin removed successfully"})
+        else:
+            return web.json_response({"status": "error", "message": "Admin not found"}, status=404)
+    except ValueError:
+        return web.json_response({"status": "error", "message": "Invalid user_id"}, status=400)
+    except Exception as e:
+        log.error(f"Error removing admin: {e}", exc_info=True)
+        return web.json_response({"status": "error", "message": "Internal server error"}, status=500)
+
+async def fetch_roblox_game_stats(place_id: str) -> Optional[Dict]:
+    if not place_id:
+        return None
+    
+    try:
+        async with ClientSession() as session:
+            place_url = f"https://games.roblox.com/v1/games?placeIds={place_id}"
+            async with session.get(place_url, timeout=10) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if data.get('data') and len(data['data']) > 0:
+                        place_data = data['data'][0]
+                        universe_id = place_data.get('universeId')
+                        
+                        if universe_id:
+                            universe_url = f"https://games.roblox.com/v1/games?universeIds={universe_id}"
+                            async with session.get(universe_url, timeout=10) as universe_response:
+                                if universe_response.status == 200:
+                                    universe_data = await universe_response.json()
+                                    if universe_data.get('data') and len(universe_data['data']) > 0:
+                                        universe_info = universe_data['data'][0]
+                                        return {
+                                            "name": universe_info.get('name', 'Unknown'),
+                                            "playing": universe_info.get('playing', 0),
+                                            "visits": universe_info.get('visits', 0),
+                                            "favorites": universe_info.get('favoritedCount', 0),
+                                            "likes": universe_info.get('likes', 0),
+                                            "maxPlayers": universe_info.get('maxPlayers', 0),
+                                            "created": universe_info.get('created', ''),
+                                            "updated": universe_info.get('updated', ''),
+                                            "universeId": universe_id,
+                                            "placeId": place_id
+                                        }
+                        
+                        return {
+                            "name": place_data.get('name', 'Unknown'),
+                            "playing": place_data.get('playing', 0),
+                            "visits": place_data.get('visits', 0),
+                            "favorites": place_data.get('favoritedCount', 0),
+                            "likes": place_data.get('likes', 0),
+                            "maxPlayers": place_data.get('maxPlayers', 0),
+                            "created": place_data.get('created', ''),
+                            "updated": place_data.get('updated', ''),
+                            "placeId": place_id
+                        }
+    except Exception as e:
+        log.error(f"Error fetching Roblox game stats: {e}", exc_info=True)
+        return None
+
+@routes.get('/api/dashboard')
+async def dashboard_data(request):
+    if not await check_auth(request):
+        return web.json_response({"status": "error", "message": "Unauthorized"}, status=401)
+    
+    try:
+        game_stats = await fetch_roblox_game_stats(config.PLACE_ID)
+        
+        report_stats = await database.get_report_stats()
+        most_reported = await database.get_most_reported_players(10)
+        recent_reports = await database.get_recent_reports_detailed(20)
+        abuse_types = await database.get_reports_by_abuse_type()
+        top_reporters = await database.get_top_reporters(10)
+        reports_by_hour = await database.get_reports_by_hour()
+        
+        today_reports = await database.get_reports_today()
+        week_reports = await database.get_reports_this_week()
+        month_reports = await database.get_reports_this_month()
+        
+        return web.json_response({
+            "status": "success",
+            "game_stats": game_stats,
+            "report_stats": {
+                **report_stats,
+                "today": today_reports,
+                "week": week_reports,
+                "month": month_reports
+            },
+            "most_reported": most_reported,
+            "recent_reports": recent_reports,
+            "abuse_types": abuse_types,
+            "top_reporters": top_reporters,
+            "reports_by_hour": reports_by_hour
+        })
+    except Exception as e:
+        log.error(f"Error getting dashboard data: {e}", exc_info=True)
+        return web.json_response({"status": "error", "message": "Internal server error"}, status=500)
+
+@routes.get('/admin')
+async def admin_panel(request):
+    import os
+    html_path = os.path.join(os.path.dirname(__file__), 'admin_panel.html')
+    try:
+        with open(html_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        return Response(text=html_content, content_type='text/html')
+    except FileNotFoundError:
+        return Response(text="Admin panel not found", status=404)
+
+@routes.get('/dashboard')
+async def dashboard_panel(request):
+    import os
+    html_path = os.path.join(os.path.dirname(__file__), 'dashboard.html')
+    try:
+        with open(html_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        return Response(text=html_content, content_type='text/html')
+    except FileNotFoundError:
+        return Response(text="Dashboard not found", status=404)
 
 app.router.add_routes(routes)
 
 async def start_web_server():
     runner = web.AppRunner(app)
     await runner.setup()
-    port_str = os.getenv('PORT', '5000')
-    port = int(port_str) if port_str and port_str.strip() else 5000
-    host = os.getenv('HOST', '0.0.0.0')
-    site = web.TCPSite(runner, host, port)
+    site = web.TCPSite(runner, config.HOST, config.PORT)
     await site.start()
-    print(f"[discord_bot] Web server started on http://{host}:{port}")
+    log.info(f"Web server started on http://{config.HOST}:{config.PORT}")
 
 @bot.event
 async def on_ready():
-    print(f"[discord_bot] Bot logged in as {bot.user}")
+    log.info(f"Bot logged in as {bot.user} (ID: {bot.user.id})")
+    log.info(f"Bot is in {len(bot.guilds)} guild(s)")
+
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return
+    log.error(f"Command error in {ctx.command}: {error}", exc_info=True)
+    await ctx.send(f"❌ An error occurred: {error}")
+
+async def cleanup_sessions_task():
+    while True:
+        try:
+            await asyncio.sleep(3600)
+            await database.cleanup_expired_sessions()
+            log.debug("Cleaned up expired admin sessions")
+        except Exception as e:
+            log.error(f"Error cleaning up sessions: {e}", exc_info=True)
 
 async def main():
-    token = os.getenv('DISCORD_BOT_TOKEN')
-    global CHANNEL_ID
-    CHANNEL_ID = int(os.getenv('DISCORD_CHANNEL_ID', 0))
+    try:
+        await database.init_database()
+        log.info("Database initialized")
+        
+        await database.migrate_json_to_db()
+        log.info("JSON migration completed (if applicable)")
+        
+        if config.ADMIN_USER_IDS:
+            for user_id in config.ADMIN_USER_IDS:
+                await database.add_admin(user_id)
+            log.info(f"Migrated {len(config.ADMIN_USER_IDS)} admin(s) from config to database")
+        
+        asyncio.create_task(cleanup_sessions_task())
+        
+        await start_web_server()
+        
+        await bot.start(config.DISCORD_BOT_TOKEN)
     
-    if not token:
-        print("[discord_bot] ERROR: DISCORD_BOT_TOKEN environment variable not set!")
-        return
-    
-    if not CHANNEL_ID:
-        print("[discord_bot] ERROR: DISCORD_CHANNEL_ID environment variable not set!")
-        return
-    
-    await start_web_server()
-    
-    await bot.start(token)
+    except Exception as e:
+        log.critical(f"Fatal error during startup: {e}", exc_info=True)
+        raise
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        log.info("Bot shutting down...")
+    except Exception as e:
+        log.critical(f"Fatal error: {e}", exc_info=True)
