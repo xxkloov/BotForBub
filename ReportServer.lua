@@ -3,9 +3,9 @@ local Remotes = game.ReplicatedStorage:WaitForChild("Events")
 local ReportPlayer = Remotes:WaitForChild("ReportPlayer")
 
 local DISCORD_WEBHOOK_URL = ""
-local BOT_SERVER_URL = "https://botforbub.onrender.com/report"
+local BOT_SERVER_URL = "https://good-veriee-bubers-5c8dd274.koyeb.app/report"
 local Testing = false
-local API_KEY = ""
+local API_KEY = "apikey_test_300192"
 
 local ALLOWED_ABUSE_TYPES = {
 	["Exploiting"] = true,
@@ -44,6 +44,9 @@ local function sendRequestWithRetry(url, data, maxRetries)
 	local attempt = 0
 	
 	while attempt < maxRetries do
+		attempt = attempt + 1
+		print("[ReportServer] Attempt", attempt, "of", maxRetries)
+		
 		local success, response = pcall(function()
 			local options = {
 				Url = url,
@@ -63,6 +66,7 @@ local function sendRequestWithRetry(url, data, maxRetries)
 		
 		if success then
 			if response.Success then
+				print("[ReportServer] Request successful, Status:", response.StatusCode)
 				local responseData = {}
 				local decodeSuccess, decoded = pcall(function()
 					return HttpService:JSONDecode(response.Body)
@@ -70,17 +74,23 @@ local function sendRequestWithRetry(url, data, maxRetries)
 				
 				if decodeSuccess and decoded then
 					responseData = decoded
+					print("[ReportServer] Response data:", HttpService:JSONEncode(decoded))
+				else
+					print("[ReportServer] Could not decode response body")
 				end
 				
 				return true, responseData, response.StatusCode
 			else
+				print("[ReportServer] Request failed, Status:", response.StatusCode)
+				print("[ReportServer] Response body:", response.Body)
+				
 				if response.StatusCode == 429 then
 					local retryAfter = 5
 					if response.Headers and response.Headers["Retry-After"] then
 						retryAfter = tonumber(response.Headers["Retry-After"]) or 5
 					end
-					attempt = attempt + 1
 					if attempt < maxRetries then
+						print("[ReportServer] Rate limited, retrying after", retryAfter, "seconds")
 						task.wait(retryAfter)
 						continue
 					end
@@ -89,9 +99,10 @@ local function sendRequestWithRetry(url, data, maxRetries)
 				return false, string.format("HTTP %d: %s", response.StatusCode, response.Body or "Unknown error"), response.StatusCode
 			end
 		else
-			attempt = attempt + 1
+			print("[ReportServer] Request error:", response)
 			if attempt < maxRetries then
 				local delay = RETRY_DELAY_BASE * (2 ^ (attempt - 1))
+				print("[ReportServer] Retrying after", delay, "seconds")
 				task.wait(delay)
 			else
 				return false, response, nil
@@ -212,12 +223,24 @@ ReportPlayer.OnServerEvent:Connect(function(plr, targetplruserid, additionalInfo
 	}
 
 	task.spawn(function()
+		print("[ReportServer] Sending report for player", reportedId, "by", reporterId)
+		print("[ReportServer] URL:", BOT_SERVER_URL)
+		print("[ReportServer] API Key set:", API_KEY ~= "" and "Yes" or "No")
+		
 		local success, response, statusCode = sendRequestWithRetry(BOT_SERVER_URL, reportData)
 
 		if success then
 			print("[ReportServer] Report sent successfully for player", reportedId, "by", reporterId)
+			if response and response.status then
+				print("[ReportServer] Response status:", response.status)
+				if response.report_id then
+					print("[ReportServer] Report ID:", response.report_id)
+				end
+			end
 		else
-			warn("[ReportServer] Failed to send report to Discord bot:", response, statusCode and "Status: " .. statusCode or "")
+			warn("[ReportServer] Failed to send report to Discord bot")
+			warn("[ReportServer] Error:", response)
+			warn("[ReportServer] Status Code:", statusCode or "N/A")
 		end
 	end)
 end)

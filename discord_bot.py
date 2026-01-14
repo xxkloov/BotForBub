@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 from aiohttp import web, ClientSession
 from aiohttp.web import Response
 import asyncio
@@ -223,6 +224,47 @@ async def is_admin(user_id: int) -> bool:
         return True
     return await database.is_admin(user_id)
 
+@bot.tree.command(name="reports", description="View reports for a specific user")
+@app_commands.describe(user_id="The Roblox user ID to check reports for")
+async def reports_slash(interaction: discord.Interaction, user_id: int):
+    if not await is_admin(interaction.user.id):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+    
+    try:
+        reports = await database.get_reports_by_user(user_id, limit=10)
+        
+        if not reports:
+            await interaction.response.send_message(f"📋 No reports found for user ID: `{user_id}`", ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title=f"📋 Reports for User {user_id}",
+            color=discord.Color.blue(),
+            timestamp=discord.utils.utcnow()
+        )
+        
+        report_text = ""
+        for i, report in enumerate(reports[:5], 1):
+            timestamp_str = datetime.fromtimestamp(report['timestamp']).strftime('%Y-%m-%d %H:%M')
+            report_text += f"**{i}.** {report['abuse_type']} - {timestamp_str}\n"
+            if report['additional_info']:
+                info_preview = report['additional_info'][:50]
+                report_text += f"   *{info_preview}...*\n"
+        
+        if len(reports) > 5:
+            report_text += f"\n*... and {len(reports) - 5} more*"
+        
+        embed.add_field(name="Recent Reports", value=report_text or "None", inline=False)
+        embed.set_footer(text=f"Total: {len(reports)} reports")
+        
+        await interaction.response.send_message(embed=embed)
+        log.info(f"Admin {interaction.user.id} queried reports for user {user_id}")
+    
+    except Exception as e:
+        log.error(f"Error in reports command: {e}", exc_info=True)
+        await interaction.response.send_message("❌ An error occurred while fetching reports.", ephemeral=True)
+
 @bot.command(name='reports')
 async def reports_command(ctx, user_id: int = None):
     if not await is_admin(ctx.author.id):
@@ -269,6 +311,33 @@ async def reports_command(ctx, user_id: int = None):
         log.error(f"Error in reports command: {e}", exc_info=True)
         await ctx.send("❌ An error occurred while fetching reports.")
 
+@bot.tree.command(name="stats", description="View report statistics")
+async def stats_slash(interaction: discord.Interaction):
+    if not await is_admin(interaction.user.id):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+    
+    try:
+        stats = await database.get_report_stats()
+        
+        embed = discord.Embed(
+            title="📊 Report Statistics",
+            color=discord.Color.green(),
+            timestamp=discord.utils.utcnow()
+        )
+        
+        embed.add_field(name="Total Reports", value=f"`{stats['total_reports']}`", inline=True)
+        embed.add_field(name="Today's Reports", value=f"`{stats['today_reports']}`", inline=True)
+        embed.add_field(name="Unique Reported Users", value=f"`{stats['unique_reported']}`", inline=True)
+        embed.add_field(name="Most Common Abuse Type", value=f"`{stats['top_abuse_type']}`", inline=False)
+        
+        await interaction.response.send_message(embed=embed)
+        log.info(f"Admin {interaction.user.id} queried statistics")
+    
+    except Exception as e:
+        log.error(f"Error in stats command: {e}", exc_info=True)
+        await interaction.response.send_message("❌ An error occurred while fetching statistics.", ephemeral=True)
+
 @bot.command(name='stats')
 async def stats_command(ctx):
     if not await is_admin(ctx.author.id):
@@ -295,6 +364,44 @@ async def stats_command(ctx):
     except Exception as e:
         log.error(f"Error in stats command: {e}", exc_info=True)
         await ctx.send("❌ An error occurred while fetching statistics.")
+
+@bot.tree.command(name="recent", description="View recent reports")
+@app_commands.describe(count="Number of reports to show (1-20)")
+async def recent_slash(interaction: discord.Interaction, count: int = 10):
+    if not await is_admin(interaction.user.id):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+    
+    if count < 1 or count > 20:
+        await interaction.response.send_message("❌ Count must be between 1 and 20.", ephemeral=True)
+        return
+    
+    try:
+        reports = await database.get_recent_reports(limit=count)
+        
+        if not reports:
+            await interaction.response.send_message("📋 No reports found.", ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title=f"📋 Recent Reports ({len(reports)})",
+            color=discord.Color.orange(),
+            timestamp=discord.utils.utcnow()
+        )
+        
+        report_text = ""
+        for i, report in enumerate(reports, 1):
+            timestamp_str = datetime.fromtimestamp(report['timestamp']).strftime('%m-%d %H:%M')
+            report_text += f"**{i}.** User `{report['reported_id']}` - {report['abuse_type']} - {timestamp_str}\n"
+        
+        embed.add_field(name="Reports", value=report_text[:1024] or "None", inline=False)
+        
+        await interaction.response.send_message(embed=embed)
+        log.info(f"Admin {interaction.user.id} queried recent {count} reports")
+    
+    except Exception as e:
+        log.error(f"Error in recent command: {e}", exc_info=True)
+        await interaction.response.send_message("❌ An error occurred while fetching recent reports.", ephemeral=True)
 
 @bot.command(name='recent')
 async def recent_command(ctx, count: int = 10):
@@ -334,6 +441,41 @@ async def recent_command(ctx, count: int = 10):
     except Exception as e:
         log.error(f"Error in recent command: {e}", exc_info=True)
         await ctx.send("❌ An error occurred while fetching recent reports.")
+
+@bot.tree.command(name="search", description="Search reports by term")
+@app_commands.describe(search_term="Search term to look for in reports")
+async def search_slash(interaction: discord.Interaction, search_term: str):
+    if not await is_admin(interaction.user.id):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+    
+    try:
+        reports = await database.search_reports(search_term, limit=10)
+        
+        if not reports:
+            await interaction.response.send_message(f"📋 No reports found matching: `{search_term}`", ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title=f"🔍 Search Results for: {search_term}",
+            color=discord.Color.purple(),
+            timestamp=discord.utils.utcnow()
+        )
+        
+        report_text = ""
+        for i, report in enumerate(reports, 1):
+            timestamp_str = datetime.fromtimestamp(report['timestamp']).strftime('%m-%d %H:%M')
+            report_text += f"**{i}.** User `{report['reported_id']}` - {report['abuse_type']} - {timestamp_str}\n"
+        
+        embed.add_field(name="Results", value=report_text[:1024] or "None", inline=False)
+        embed.set_footer(text=f"Found {len(reports)} results")
+        
+        await interaction.response.send_message(embed=embed)
+        log.info(f"Admin {interaction.user.id} searched for: {search_term}")
+    
+    except Exception as e:
+        log.error(f"Error in search command: {e}", exc_info=True)
+        await interaction.response.send_message("❌ An error occurred while searching reports.", ephemeral=True)
 
 @bot.command(name='search')
 async def search_command(ctx, *, search_term: str = None):
@@ -589,6 +731,11 @@ async def start_web_server():
 async def on_ready():
     log.info(f"Bot logged in as {bot.user} (ID: {bot.user.id})")
     log.info(f"Bot is in {len(bot.guilds)} guild(s)")
+    try:
+        synced = await bot.tree.sync()
+        log.info(f"Synced {len(synced)} slash command(s)")
+    except Exception as e:
+        log.error(f"Failed to sync slash commands: {e}")
 
 @bot.event
 async def on_command_error(ctx, error):
