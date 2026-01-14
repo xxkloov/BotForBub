@@ -1,27 +1,12 @@
-# Deployment Guide - Koyeb + Supabase
+# Deployment Guide - Koyeb with Persistent Storage
 
 ## Step-by-Step Deployment
 
-### 1. Setup Supabase Database
+### Option 1: Koyeb Storage (Recommended - Simpler!)
 
-1. Go to https://supabase.com
-2. Sign up (free account)
-3. Click "New Project"
-4. Fill in:
-   - **Name:** `roblox-report-bot`
-   - **Database Password:** (save this!)
-   - **Region:** Choose closest to you
-5. Wait for project creation (~2 minutes)
-6. Go to **Settings** > **Database**
-7. Find **Connection string** section
-8. Copy the **URI** connection string:
-   ```
-   postgresql://postgres:[YOUR-PASSWORD]@db.xxxxx.supabase.co:5432/postgres
-   ```
-9. Replace `[YOUR-PASSWORD]` with your actual password
-10. Save this - you'll need it for Koyeb
+Koyeb provides persistent storage volumes perfect for SQLite databases. No external database needed!
 
-### 2. Setup Koyeb Hosting
+### 1. Setup Koyeb Hosting with Storage
 
 1. Go to https://www.koyeb.com
 2. Sign up (free account, no credit card)
@@ -34,8 +19,15 @@
    - **Region:** Choose closest to you
    - **Build Command:** `pip install -r requirements.txt`
    - **Run Command:** `python discord_bot.py`
-8. Go to **Environment Variables** tab
-9. Add these variables:
+8. **Add Persistent Storage:**
+   - Scroll down to **"Volumes"** section
+   - Click **"Add Volume"**
+   - **Name:** `database-storage`
+   - **Mount Path:** `/app/data`
+   - **Size:** 1GB (free tier includes storage)
+   - Click **"Add"**
+9. Go to **Environment Variables** tab
+10. Add these variables:
 
 ```
 DISCORD_BOT_TOKEN=your_discord_bot_token
@@ -43,14 +35,34 @@ DISCORD_CHANNEL_ID=your_discord_channel_id
 ADMIN_PASSWORD=your_secure_password_here
 API_KEY=your_optional_api_key
 PLACE_ID=132682513110700
-DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres
 ```
 
-10. Click **"Deploy"**
-11. Wait for deployment (~3-5 minutes)
-12. Get your URL: `https://your-app-name.koyeb.app`
+**Note:** Don't set `DATABASE_URL` - we'll use SQLite with Koyeb storage!
 
-### 3. Update Roblox Script
+11. Click **"Deploy"**
+12. Wait for deployment (~3-5 minutes)
+13. Get your URL: `https://your-app-name.koyeb.app`
+
+### Option 2: Supabase PostgreSQL (Optional - For Advanced Use)
+
+If you prefer PostgreSQL, you can still use Supabase:
+
+1. Go to https://supabase.com
+2. Sign up (free account)
+3. Click "New Project"
+4. Fill in project details
+5. Go to **Settings** > **Database**
+6. Copy the **URI** connection string
+7. Add to Koyeb environment variables:
+   ```
+   DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres
+   ```
+
+### 3. Update Database Path (For Koyeb Storage)
+
+We need to update the database to use the mounted volume. The code will automatically use `/app/data/reports.db` when deployed on Koyeb.
+
+### 5. Update Roblox Script
 
 1. Open `ReportServer.lua` in your Roblox project
 2. Update the URL:
@@ -60,7 +72,7 @@ DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres
    ```
 3. Save and publish your game
 
-### 4. Enable HTTP Service in Roblox
+### 6. Enable HTTP Service in Roblox
 
 1. In Roblox Studio: **Game Settings**
 2. Go to **Security** tab
@@ -68,7 +80,7 @@ DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres
 4. Add domain: `your-app-name.koyeb.app`
 5. Save
 
-### 5. Test the System
+### 7. Test the System
 
 1. Visit: `https://your-app-name.koyeb.app/dashboard`
 2. Login with your `ADMIN_PASSWORD`
@@ -78,9 +90,8 @@ DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres
 
 ## Verification Checklist
 
-- [ ] Supabase project created
-- [ ] Database connection string copied
 - [ ] Koyeb app created and deployed
+- [ ] Persistent volume added (`/app/data`)
 - [ ] All environment variables set in Koyeb
 - [ ] Koyeb deployment successful (green status)
 - [ ] Dashboard accessible at `/dashboard`
@@ -88,6 +99,7 @@ DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres
 - [ ] Roblox script updated with Koyeb URL
 - [ ] HTTP Service enabled in Roblox
 - [ ] Test report sent successfully
+- [ ] Database file created in volume (check Koyeb logs)
 
 ## Monitoring
 
@@ -96,21 +108,20 @@ DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres
 - Click "Logs" tab
 - View real-time logs
 
-**Supabase Dashboard:**
-- Go to Supabase project
-- Click "Table Editor" to see reports
-- Check "Database" > "Connection Pooling" for stats
+**Database Location:**
+- Database file: `/app/data/reports.db` (in persistent volume)
+- Logs: `/app/data/logs/` (if configured)
 
 ## Backup
 
-**Database Backup (Supabase):**
-- Supabase automatically backs up daily
-- Go to Settings > Database > Backups
-- Can restore from any backup point
+**Koyeb Volume Backup:**
+- Koyeb volumes are persistent and survive deployments
+- To backup: Download volume or use Koyeb's backup feature
+- Database file location: `/app/data/reports.db`
 
-**SQLite Backup (if not using Supabase):**
-- Download `reports.db` from Koyeb
-- Or use Koyeb's volume persistence
+**Manual Backup:**
+- Access Koyeb console/SSH (if available)
+- Copy `/app/data/reports.db` to your local machine
 
 ## Troubleshooting
 
@@ -120,9 +131,10 @@ DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres
 - Ensure Python version matches `runtime.txt`
 
 **Database connection fails:**
-- Verify `DATABASE_URL` format is correct
-- Check Supabase project is active
-- Ensure password in URL is correct (URL-encoded if needed)
+- Check if volume is mounted correctly in Koyeb
+- Verify `/app/data` directory exists
+- Check Koyeb logs for permission errors
+- Ensure volume is attached to your service
 
 **Bot not responding:**
 - Check Koyeb logs for errors
@@ -134,13 +146,11 @@ DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres
 **Koyeb Free Tier:**
 - 2 services
 - 256MB RAM per service
+- Persistent storage volumes (included)
 - Always-on (no sleep)
 - Free forever
 
-**Supabase Free Tier:**
-- 500MB database
-- 2GB bandwidth
-- Free forever
-
 **Total Cost: $0/month** ✅
+
+**Note:** Using Koyeb storage is simpler and free! No need for Supabase unless you need PostgreSQL features.
 

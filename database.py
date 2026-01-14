@@ -5,8 +5,12 @@ from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 import asyncio
 
-DB_FILE = "reports.db"
-REPORTS_FILE = "reports.json"
+DATA_DIR = os.getenv("DATA_DIR", "/app/data")
+if not os.path.exists(DATA_DIR):
+    DATA_DIR = os.path.dirname(__file__)
+
+DB_FILE = os.path.join(DATA_DIR, "reports.db")
+REPORTS_FILE = os.path.join(DATA_DIR, "reports.json")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 USE_POSTGRES = DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://")
@@ -25,9 +29,11 @@ async def get_db_connection():
     if USE_POSTGRES and POSTGRES_AVAILABLE:
         return await asyncpg.connect(DATABASE_URL)
     else:
+        os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
         return await aiosqlite.connect(DB_FILE)
 
 async def init_database():
+    os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
     async with aiosqlite.connect(DB_FILE) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS reports (

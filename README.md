@@ -43,20 +43,21 @@ A comprehensive report system for Roblox games that sends player reports to Disc
 6. Click "Deploy"
 7. Get your URL: `https://your-app.koyeb.app`
 
-### 3. Setup Supabase Database (Optional but Recommended)
+### 3. Add Persistent Storage (Recommended)
 
-**For production, use PostgreSQL via Supabase:**
+**Koyeb provides persistent storage - perfect for SQLite!**
 
-1. Go to https://supabase.com and create a free account
-2. Create a new project
-3. Go to Settings > Database > Connection string
-4. Copy the connection string (URI format)
-5. Add to Koyeb environment variables:
-   ```
-   DATABASE_URL=postgresql://user:password@host:port/database
-   ```
+1. In Koyeb app settings, go to **"Volumes"** section
+2. Click **"Add Volume"**
+3. Configure:
+   - **Name:** `database-storage`
+   - **Mount Path:** `/app/data`
+   - **Size:** 1GB (free tier includes storage)
+4. Click **"Add"**
 
-**Note:** If `DATABASE_URL` is not set, the bot will use SQLite (works fine for single instance).
+**Note:** The bot will automatically use `/app/data/reports.db` for the database. No external database needed!
+
+**Alternative:** If you prefer PostgreSQL, you can use Supabase and set `DATABASE_URL` environment variable.
 
 ### 4. Update Roblox Script
 
@@ -91,7 +92,8 @@ Once deployed:
 | `ADMIN_PASSWORD` | Yes | Password for admin panel login |
 | `API_KEY` | No | API key for report endpoint (optional) |
 | `PLACE_ID` | No | Roblox Place ID (defaults to your game) |
-| `DATABASE_URL` | No | PostgreSQL connection string (uses SQLite if not set) |
+| `DATABASE_URL` | No | PostgreSQL connection string (uses SQLite with Koyeb storage if not set) |
+| `DATA_DIR` | No | Data directory path (default: `/app/data` for Koyeb, current dir for local) |
 | `HOST` | No | Server host (default: 0.0.0.0) |
 | `PORT` | No | Server port (default: 5000, Koyeb sets automatically) |
 
